@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <AssemblyName>ThrowableVisuals</AssemblyName>
+    <RootNamespace>ThrowableVisuals</RootNamespace>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Talespire.BepInEx" Version="5.4.22" PrivateAssets="all" />
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" PrivateAssets="all" />
+    <ProjectReference Include="../../refs/ComputerysModdingUtilities.Ref/ComputerysModdingUtilities.Ref.csproj" Private="false" ReferenceOutputAssembly="true" />
+  </ItemGroup>
+</Project>
