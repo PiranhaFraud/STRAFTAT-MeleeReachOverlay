@@ -8,6 +8,7 @@ on:
     paths:
       - "throwable_chunks/**"
       - "throwable_test2_patch.b64"
+      - "throwable_test3_patch.b64"
       - ".github/workflows/build-throwable-visuals.yml"
   pull_request:
     branches:
@@ -15,6 +16,7 @@ on:
     paths:
       - "throwable_chunks/**"
       - "throwable_test2_patch.b64"
+      - "throwable_test3_patch.b64"
       - ".github/workflows/build-throwable-visuals.yml"
 
 jobs:
@@ -36,18 +38,38 @@ jobs:
           [IO.File]::WriteAllBytes("throwable-visuals-source.zip", $bytes)
           Expand-Archive -Path throwable-visuals-source.zip -DestinationPath . -Force
 
-          $patchBytes = [Convert]::FromBase64String((Get-Content throwable_test2_patch.b64 -Raw).Trim())
-          [IO.File]::WriteAllBytes("throwable_test2.patch.gz", $patchBytes)
-          $input = [IO.File]::OpenRead("throwable_test2.patch.gz")
-          try {
-            $gzip = [IO.Compression.GZipStream]::new($input, [IO.Compression.CompressionMode]::Decompress)
+          function Expand-GzipPatch([string]$Base64Path, [string]$PatchName) {
+            $patchBytes = [Convert]::FromBase64String((Get-Content $Base64Path -Raw).Trim())
+            $gzipPath = "$PatchName.gz"
+            [IO.File]::WriteAllBytes($gzipPath, $patchBytes)
+            $input = [IO.File]::OpenRead($gzipPath)
             try {
-              $output = [IO.File]::Create("throwable_test2.patch")
-              try { $gzip.CopyTo($output) } finally { $output.Dispose() }
-            } finally { $gzip.Dispose() }
-          } finally { $input.Dispose() }
+              $gzip = [IO.Compression.GZipStream]::new($input, [IO.Compression.CompressionMode]::Decompress)
+              try {
+                $output = [IO.File]::Create($PatchName)
+                try { $gzip.CopyTo($output) } finally { $output.Dispose() }
+              } finally { $gzip.Dispose() }
+            } finally { $input.Dispose() }
+          }
 
+          Expand-GzipPatch "throwable_test2_patch.b64" "throwable_test2.patch"
           git apply --whitespace=nowarn throwable_test2.patch
+
+          # Normalize files touched by test3 so the patch is independent of the ZIP's CRLF style.
+          $utf8NoBom = [Text.UTF8Encoding]::new($false)
+          @(
+            "src/ThrowableVisuals/Plugin.cs",
+            "src/ThrowableVisuals/AssemblyInfo.cs",
+            "thunderstore/manifest.json",
+            "thunderstore/README.md",
+            "thunderstore/CHANGELOG.md"
+          ) | ForEach-Object {
+            $text = [IO.File]::ReadAllText($_).Replace("`r`n", "`n")
+            [IO.File]::WriteAllText($_, $text, $utf8NoBom)
+          }
+
+          Expand-GzipPatch "throwable_test3_patch.b64" "throwable_test3.patch"
+          git apply --whitespace=nowarn throwable_test3.patch
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -75,33 +97,34 @@ jobs:
           Copy-Item "thunderstore/CHANGELOG.md" $package
           Copy-Item "thunderstore/icon.png" $package
 
-          Compress-Archive -Path "$package/*" -DestinationPath "$root/PiranhaFraud-ThrowableVisuals-0.1.1-test2.zip" -Force
-          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" "$root/ThrowableVisuals-0.1.1-test2.dll"
+          Compress-Archive -Path "$package/*" -DestinationPath "$root/PiranhaFraud-ThrowableVisuals-0.1.2-test3.zip" -Force
+          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" "$root/ThrowableVisuals-0.1.2-test3.dll"
 
-          $sourceItems = @("src", "thunderstore", "README.md", "BUILDEN_DE.md", ".gitignore") | Where-Object { Test-Path $_ }
-          Compress-Archive -Path $sourceItems -DestinationPath "$root/STRAFTAT-ThrowableVisuals-source-0.1.1-test2.zip" -Force
+          $sourceItems = @("src", "refs", "thunderstore", "README.md", "BUILDEN_DE.md", ".gitignore") | Where-Object { Test-Path $_ }
+          Compress-Archive -Path $sourceItems -DestinationPath "$root/STRAFTAT-ThrowableVisuals-source-0.1.2-test3.zip" -Force
 
           @"
-          STRAFTAT Throwable Visuals 0.1.1-test2
+          STRAFTAT Throwable Visuals 0.1.2-test3
 
           Recommended installation:
-          Import PiranhaFraud-ThrowableVisuals-0.1.1-test2.zip as a local mod in r2modman/Thunderstore.
+          Import PiranhaFraud-ThrowableVisuals-0.1.2-test3.zip as a local mod in r2modman/Thunderstore.
 
           Direct installation:
-          Copy ThrowableVisuals-0.1.1-test2.dll into the active profile's BepInEx/plugins/ThrowableVisuals folder.
+          Copy ThrowableVisuals-0.1.2-test3.dll into the active profile's BepInEx/plugins/ThrowableVisuals folder.
 
-          PreviewMode defaults to WhileHeld. It can be changed to WhilePreparing in the config/mod menu.
-          Fuse-limited grenades are clipped at the predicted detonation time.
+          PreviewMode can be set to WhileHeld or WhilePreparing.
+          TrajectoryLineWidth and BlastRadiusLineWidth are now independent.
+          Rocket Launcher uses a straight impact trace; Mortini uses a ballistic fallback.
           F11 = toggle overlay
           F12 = diagnostics
           "@ | Set-Content "$root/INSTALLATION.txt" -Encoding UTF8
 
-          Get-FileHash "$root/ThrowableVisuals-0.1.1-test2.dll", "$root/PiranhaFraud-ThrowableVisuals-0.1.1-test2.zip", "$root/STRAFTAT-ThrowableVisuals-source-0.1.1-test2.zip" -Algorithm SHA256 |
+          Get-FileHash "$root/ThrowableVisuals-0.1.2-test3.dll", "$root/PiranhaFraud-ThrowableVisuals-0.1.2-test3.zip", "$root/STRAFTAT-ThrowableVisuals-source-0.1.2-test3.zip" -Algorithm SHA256 |
             Format-Table -AutoSize | Out-String | Set-Content "$root/SHA256.txt" -Encoding UTF8
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThrowableVisuals-0.1.1-test2
+          name: ThrowableVisuals-0.1.2-test3
           path: artifacts/*
           if-no-files-found: error
