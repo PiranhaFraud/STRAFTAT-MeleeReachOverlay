@@ -6,7 +6,7 @@ on:
     branches:
       - agent/throwable-visuals-hold-preview
     paths:
-      - "throwable_source.b64"
+      - "throwable_chunks/**"
       - ".github/workflows/build-throwable-visuals.yml"
 
 jobs:
@@ -19,7 +19,11 @@ jobs:
       - name: Expand prototype source
         shell: pwsh
         run: |
-          $bytes = [Convert]::FromBase64String((Get-Content throwable_source.b64 -Raw).Trim())
+          $ErrorActionPreference = "Stop"
+          $base64 = (Get-ChildItem "throwable_chunks/*.txt" | Sort-Object Name | ForEach-Object {
+            (Get-Content $_.FullName -Raw).Trim()
+          }) -join ""
+          $bytes = [Convert]::FromBase64String($base64)
           [IO.File]::WriteAllBytes("throwable-visuals-source.zip", $bytes)
           Expand-Archive -Path throwable-visuals-source.zip -DestinationPath . -Force
 
@@ -67,7 +71,7 @@ jobs:
           F12 = diagnostics
           "@ | Set-Content "$root/INSTALLATION.txt" -Encoding UTF8
 
-          Get-FileHash "$root/ThrowableVisuals.dll", "$root/PiranhaFraud-ThrowableVisuals-0.1.0-test1.zip" -Algorithm SHA256 |
+          Get-FileHash "$root/ThrowableVisuals.dll", "$root/PiranhaFraud-ThrowableVisuals-0.1.0-test1.zip", "$root/STRAFTAT-ThrowableVisuals-source-0.1.0-test1.zip" -Algorithm SHA256 |
             Format-Table -AutoSize | Out-String | Set-Content "$root/SHA256.txt" -Encoding UTF8
 
       - name: Upload artifact
