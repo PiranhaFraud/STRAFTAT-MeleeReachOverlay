@@ -1,0 +1,78 @@
+name: Build Throwable Visuals
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/throwable-visuals-hold-preview
+    paths:
+      - "throwable_source.b64"
+      - ".github/workflows/build-throwable-visuals.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Expand prototype source
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String((Get-Content throwable_source.b64 -Raw).Trim())
+          [IO.File]::WriteAllBytes("throwable-visuals-source.zip", $bytes)
+          Expand-Archive -Path throwable-visuals-source.zip -DestinationPath . -Force
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore src/ThrowableVisuals/ThrowableVisuals.csproj
+
+      - name: Build
+        run: dotnet build src/ThrowableVisuals/ThrowableVisuals.csproj -c Release --no-restore
+
+      - name: Prepare test bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $PWD "artifacts"
+          $package = Join-Path $root "Thunderstore-Package"
+          $plugins = Join-Path $package "plugins"
+          New-Item -ItemType Directory -Force -Path $plugins | Out-Null
+
+          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" $plugins
+          Copy-Item "thunderstore/manifest.json" $package
+          Copy-Item "thunderstore/README.md" $package
+          Copy-Item "thunderstore/CHANGELOG.md" $package
+          Copy-Item "thunderstore/icon.png" $package
+
+          Compress-Archive -Path "$package/*" -DestinationPath "$root/PiranhaFraud-ThrowableVisuals-0.1.0-test1.zip" -Force
+          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" "$root/ThrowableVisuals.dll"
+          Copy-Item "throwable-visuals-source.zip" "$root/STRAFTAT-ThrowableVisuals-source-0.1.0-test1.zip"
+
+          @"
+          STRAFTAT Throwable Visuals 0.1.0-test1
+
+          Recommended installation:
+          Import PiranhaFraud-ThrowableVisuals-0.1.0-test1.zip as a local mod in r2modman/Thunderstore.
+
+          Direct installation:
+          Copy ThrowableVisuals.dll into the active profile's BepInEx/plugins/ThrowableVisuals folder.
+
+          The preview appears only while the active throw input is held or a cookable grenade is open.
+          F11 = toggle overlay
+          F12 = diagnostics
+          "@ | Set-Content "$root/INSTALLATION.txt" -Encoding UTF8
+
+          Get-FileHash "$root/ThrowableVisuals.dll", "$root/PiranhaFraud-ThrowableVisuals-0.1.0-test1.zip" -Algorithm SHA256 |
+            Format-Table -AutoSize | Out-String | Set-Content "$root/SHA256.txt" -Encoding UTF8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThrowableVisuals-0.1.0-test1
+          path: artifacts/*
+          if-no-files-found: error
