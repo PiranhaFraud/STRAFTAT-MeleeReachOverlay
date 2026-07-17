@@ -8,6 +8,12 @@ on:
     paths:
       - "throwable_chunks/**"
       - ".github/workflows/build-throwable-visuals.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "throwable_chunks/**"
+      - ".github/workflows/build-throwable-visuals.yml"
 
 jobs:
   build:
