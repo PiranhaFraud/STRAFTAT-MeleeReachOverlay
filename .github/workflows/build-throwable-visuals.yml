@@ -10,6 +10,7 @@ on:
       - "throwable_test2_patch.b64"
       - "throwable_test3_patch.b64"
       - "throwable_v020_patch_chunks/**"
+      - "throwable_v021_patch.b64"
       - ".github/workflows/build-throwable-visuals.yml"
   pull_request:
     branches:
@@ -19,6 +20,7 @@ on:
       - "throwable_test2_patch.b64"
       - "throwable_test3_patch.b64"
       - "throwable_v020_patch_chunks/**"
+      - "throwable_v021_patch.b64"
       - ".github/workflows/build-throwable-visuals.yml"
 
 jobs:
@@ -86,6 +88,9 @@ jobs:
           } finally { $v020Input.Dispose() }
           git apply --whitespace=nowarn throwable_v020.patch
 
+          Expand-GzipPatch "throwable_v021_patch.b64" "throwable_v021.patch"
+          git apply --whitespace=nowarn throwable_v021.patch
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -112,33 +117,34 @@ jobs:
           Copy-Item "thunderstore/CHANGELOG.md" $package
           Copy-Item "thunderstore/icon.png" $package
 
-          Compress-Archive -Path "$package/*" -DestinationPath "$root/PiranhaFraud-ThrowableVisuals-0.2.0.zip" -Force
-          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" "$root/ThrowableVisuals-0.2.0.dll"
+          Compress-Archive -Path "$package/*" -DestinationPath "$root/PiranhaFraud-ThrowableVisuals-0.2.1.zip" -Force
+          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" "$root/ThrowableVisuals-0.2.1.dll"
 
           $sourceItems = @("src", "refs", "thunderstore", "README.md", "BUILDEN_DE.md", ".gitignore") | Where-Object { Test-Path $_ }
-          Compress-Archive -Path $sourceItems -DestinationPath "$root/STRAFTAT-ThrowableVisuals-source-0.2.0.zip" -Force
+          Compress-Archive -Path $sourceItems -DestinationPath "$root/STRAFTAT-ThrowableVisuals-source-0.2.1.zip" -Force
 
           @"
-          STRAFTAT Throwable Visuals 0.2.0
+          STRAFTAT Throwable Visuals 0.2.1
 
           Recommended installation:
-          Import PiranhaFraud-ThrowableVisuals-0.2.0.zip as a local mod in r2modman/Thunderstore.
+          Import PiranhaFraud-ThrowableVisuals-0.2.1.zip as a local mod in r2modman/Thunderstore.
 
           Direct installation:
-          Copy ThrowableVisuals-0.2.0.dll into the active profile's BepInEx/plugins/ThrowableVisuals folder.
+          Copy ThrowableVisuals-0.2.1.dll into the active profile's BepInEx/plugins/ThrowableVisuals folder.
 
-          Mortini now mirrors PredictedProjectile runtime movement, including MOVE_RATE/usePhysics.
-          Held-state validation uses PlayerPickup's synchronized hand object.
+          TrajectoryThickness uses integer steps: 1 = 0.001 world units; default = 2.
+          TrajectoryOpacityPercent changes only the cyan trajectory.
+          Dropped objects must remain attached to the active local camera root or their visuals are cleared immediately.
           F11 = toggle overlay
           F12 = one-frame diagnostics snapshot
           "@ | Set-Content "$root/INSTALLATION.txt" -Encoding UTF8
 
-          Get-FileHash "$root/ThrowableVisuals-0.2.0.dll", "$root/PiranhaFraud-ThrowableVisuals-0.2.0.zip", "$root/STRAFTAT-ThrowableVisuals-source-0.2.0.zip" -Algorithm SHA256 |
+          Get-FileHash "$root/ThrowableVisuals-0.2.1.dll", "$root/PiranhaFraud-ThrowableVisuals-0.2.1.zip", "$root/STRAFTAT-ThrowableVisuals-source-0.2.1.zip" -Algorithm SHA256 |
             Format-Table -AutoSize | Out-String | Set-Content "$root/SHA256.txt" -Encoding UTF8
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThrowableVisuals-0.2.0
+          name: ThrowableVisuals-0.2.1
           path: artifacts/*
           if-no-files-found: error
