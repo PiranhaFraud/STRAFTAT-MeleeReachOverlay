@@ -1,0 +1,150 @@
+name: Build Throwable Visuals
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/throwable-visuals-hold-preview
+    paths:
+      - "throwable_chunks/**"
+      - "throwable_test2_patch.b64"
+      - "throwable_test3_patch.b64"
+      - "throwable_v020_patch_chunks/**"
+      - "throwable_v021_patch.b64"
+      - ".github/workflows/build-throwable-visuals.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "throwable_chunks/**"
+      - "throwable_test2_patch.b64"
+      - "throwable_test3_patch.b64"
+      - "throwable_v020_patch_chunks/**"
+      - "throwable_v021_patch.b64"
+      - ".github/workflows/build-throwable-visuals.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Expand and patch source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $base64 = (Get-ChildItem "throwable_chunks/*.txt" | Sort-Object Name | ForEach-Object {
+            (Get-Content $_.FullName -Raw).Trim()
+          }) -join ""
+          $bytes = [Convert]::FromBase64String($base64)
+          [IO.File]::WriteAllBytes("throwable-visuals-source.zip", $bytes)
+          Expand-Archive -Path throwable-visuals-source.zip -DestinationPath . -Force
+
+          function Expand-GzipPatch([string]$Base64Path, [string]$PatchName) {
+            $patchBytes = [Convert]::FromBase64String((Get-Content $Base64Path -Raw).Trim())
+            $gzipPath = "$PatchName.gz"
+            [IO.File]::WriteAllBytes($gzipPath, $patchBytes)
+            $input = [IO.File]::OpenRead($gzipPath)
+            try {
+              $gzip = [IO.Compression.GZipStream]::new($input, [IO.Compression.CompressionMode]::Decompress)
+              try {
+                $output = [IO.File]::Create($PatchName)
+                try { $gzip.CopyTo($output) } finally { $output.Dispose() }
+              } finally { $gzip.Dispose() }
+            } finally { $input.Dispose() }
+          }
+
+          Expand-GzipPatch "throwable_test2_patch.b64" "throwable_test2.patch"
+          git apply --whitespace=nowarn throwable_test2.patch
+
+          $utf8NoBom = [Text.UTF8Encoding]::new($false)
+          @(
+            "src/ThrowableVisuals/Plugin.cs",
+            "src/ThrowableVisuals/AssemblyInfo.cs",
+            "thunderstore/manifest.json",
+            "thunderstore/README.md",
+            "thunderstore/CHANGELOG.md"
+          ) | ForEach-Object {
+            $text = [IO.File]::ReadAllText($_).Replace("`r`n", "`n")
+            [IO.File]::WriteAllText($_, $text, $utf8NoBom)
+          }
+
+          Expand-GzipPatch "throwable_test3_patch.b64" "throwable_test3.patch"
+          git apply --whitespace=nowarn throwable_test3.patch
+
+          $v020Base64 = (Get-ChildItem "throwable_v020_patch_chunks/*.txt" | Sort-Object Name | ForEach-Object {
+            (Get-Content $_.FullName -Raw).Trim()
+          }) -join ""
+          [IO.File]::WriteAllBytes("throwable_v020.patch.gz", [Convert]::FromBase64String($v020Base64))
+          $v020Input = [IO.File]::OpenRead("throwable_v020.patch.gz")
+          try {
+            $v020Gzip = [IO.Compression.GZipStream]::new($v020Input, [IO.Compression.CompressionMode]::Decompress)
+            try {
+              $v020Output = [IO.File]::Create("throwable_v020.patch")
+              try { $v020Gzip.CopyTo($v020Output) } finally { $v020Output.Dispose() }
+            } finally { $v020Gzip.Dispose() }
+          } finally { $v020Input.Dispose() }
+          git apply --whitespace=nowarn throwable_v020.patch
+
+          Expand-GzipPatch "throwable_v021_patch.b64" "throwable_v021.patch"
+          git apply --whitespace=nowarn throwable_v021.patch
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore src/ThrowableVisuals/ThrowableVisuals.csproj
+
+      - name: Build
+        run: dotnet build src/ThrowableVisuals/ThrowableVisuals.csproj -c Release --no-restore
+
+      - name: Prepare release candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $PWD "artifacts"
+          $package = Join-Path $root "Thunderstore-Package"
+          $plugins = Join-Path $package "plugins"
+          New-Item -ItemType Directory -Force -Path $plugins | Out-Null
+
+          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" $plugins
+          Copy-Item "thunderstore/manifest.json" $package
+          Copy-Item "thunderstore/README.md" $package
+          Copy-Item "thunderstore/CHANGELOG.md" $package
+          Copy-Item "thunderstore/icon.png" $package
+
+          Compress-Archive -Path "$package/*" -DestinationPath "$root/PiranhaFraud-ThrowableVisuals-0.2.1.zip" -Force
+          Copy-Item "src/ThrowableVisuals/bin/Release/net472/ThrowableVisuals.dll" "$root/ThrowableVisuals-0.2.1.dll"
+
+          $sourceItems = @("src", "refs", "thunderstore", "README.md", "BUILDEN_DE.md", ".gitignore") | Where-Object { Test-Path $_ }
+          Compress-Archive -Path $sourceItems -DestinationPath "$root/STRAFTAT-ThrowableVisuals-source-0.2.1.zip" -Force
+
+          @"
+          STRAFTAT Throwable Visuals 0.2.1
+
+          Recommended installation:
+          Import PiranhaFraud-ThrowableVisuals-0.2.1.zip as a local mod in r2modman/Thunderstore.
+
+          Direct installation:
+          Copy ThrowableVisuals-0.2.1.dll into the active profile's BepInEx/plugins/ThrowableVisuals folder.
+
+          TrajectoryThickness uses integer steps: 1 = 0.001 world units; default = 2.
+          TrajectoryOpacityPercent changes only the cyan trajectory.
+          Dropped objects must remain attached to the active local camera root or their visuals are cleared immediately.
+          F11 = toggle overlay
+          F12 = one-frame diagnostics snapshot
+          "@ | Set-Content "$root/INSTALLATION.txt" -Encoding UTF8
+
+          Get-FileHash "$root/ThrowableVisuals-0.2.1.dll", "$root/PiranhaFraud-ThrowableVisuals-0.2.1.zip", "$root/STRAFTAT-ThrowableVisuals-source-0.2.1.zip" -Algorithm SHA256 |
+            Format-Table -AutoSize | Out-String | Set-Content "$root/SHA256.txt" -Encoding UTF8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThrowableVisuals-0.2.1
+          path: artifacts/*
+          if-no-files-found: error
